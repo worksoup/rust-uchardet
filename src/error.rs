@@ -20,7 +20,27 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#![no_std]
-#![allow(non_camel_case_types)]
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("the detector could not determine the character encoding")]
+    UnrecognizableCharset,
+    #[error("the detector products a invalid charset name.")]
+    InvalidCharset,
+    #[error("a non-standard charset name that encoding_rs doesn't support: .")]
+    NonStandardCharset,
 
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+    #[error("out of memory, underlayer error code is {0}")]
+    OutOfMemory(i32),
+
+    #[error("invalid language string: {0}")]
+    InvalidLanguage(#[from] std::ffi::NulError),
+    #[error("invalid language string: {0}")]
+    InvalidLanguageResponse(#[from] std::str::Utf8Error),
+}
+
+impl Error {
+    pub(crate) unsafe fn from_ret(ret: i32) -> Self {
+        debug_assert_ne!(ret, 0, "success code passed to Error::from_ret");
+        Error::OutOfMemory(ret)
+    }
+}

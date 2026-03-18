@@ -1,63 +1,111 @@
-// This assumes that either uchardet dev packages are installed where
-// `pkg_config` can find them, or that CMake and supporting tools are
-// available.  Patches are welcome to help make it work on other operating
-// systems!
+// MIT License
+//
+// Copyright (c) 2026 worksoup <https://github.com/worksoup/>
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
-extern crate pkg_config;
-extern crate cmake;
-
-use std::env;
 use cmake::Config;
+use std::{env, path::PathBuf};
 
 fn main() {
-    let target = env::var("TARGET").expect("TARGET was not set");
+    if let Ok(lib) = pkg_config::Config::new().probe("uchardet")
+        // 目前与已发布版本不兼容。
+        && false
+    {
+        let include_args: Vec<String> = lib
+            .include_paths
+            .iter()
+            .map(|p| format!("-I{}", p.display()))
+            .collect();
+        let header = find_header(&lib.include_paths).unwrap_or_else(|| PathBuf::from("uchardet.h"));
+        generate_bindings(header, include_args);
+    } else {
+        let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+        let cpp_stdlib = 'cpp_stdlib: {
+            Some(match target_os.as_str() {
+                "macos" => "c++",
+                "windows" => {
+                    let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
+                    if target_env.as_str() == "gnu" {
+                        "stdc++"
+                    } else {
+                        break 'cpp_stdlib None;
+                    }
+                }
+                _ => "stdc++",
+            })
+        };
+        let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
+        let cmake_build_type = if profile == "release" {
+            "Release"
+        } else {
+            "RelWithDebInfo"
+        };
+        if let Some(cpp_stdlib) = cpp_stdlib {
+            println!("cargo:rustc-link-lib={}", cpp_stdlib)
+        }
+        eprintln!("pkg-config failed, building uchardet from source");
+        let dst = Config::new("uchardet")
+            .define("BUILD_BINARY", "OFF")
+            .define("BUILD_STATIC", "ON")
+            .define("BUILD_SHARED_LIBS", "OFF")
+            .define("CMAKE_BUILD_TYPE", cmake_build_type)
+            .build();
 
-    // Do nothing if this package is already provided by the system.
-    if pkg_config::find_library("uchardet").is_ok() { return; }
+        // 输出链接指令
+        println!("cargo:rustc-link-search=native={}/lib", dst.display());
+        println!("cargo:rustc-link-search=native={}/lib64", dst.display());
+        println!("cargo:rustc-link-lib=static=uchardet");
 
-    // Build uchardet ourselves
-    let mut config = Config::new("uchardet");
-
-    // Mustn't build the binaries as they aren't compatible with Windows
-    // and cause a compiler error
-    config.define("BUILD_BINARY", "OFF");
-    config.define("BUILD_STATIC", "ON");
-    config.define("BUILD_SHARED_LIBS", "OFF");
-
-    if target.contains("windows-gnu") {
-        // FIXME: This is only needed on newer versions of gcc (>5 ?); Older
-        //        versions fail with "unrecognized command line option" and
-        //        abort the build; We need to somehow detect the compiler version
-        // Disable sized deallocation as we're unable to link when it's enabled
-        config.cxxflag("-fno-sized-deallocation");
+        let header = PathBuf::from("uchardet/src/uchardet.h");
+        let include_args = vec!["-Iuchardet/src".to_string()];
+        generate_bindings(header, include_args);
     }
+}
 
-    // unset the makeflags (jobserver currently has a bug on this system)
-    // For more information see https://github.com/alexcrichton/jobserver-rs/issues/4
-    if target.contains("windows-gnu") {
-        env::set_var("CARGO_MAKEFLAGS", "");
+fn find_header(include_paths: &[PathBuf]) -> Option<PathBuf> {
+    for dir in include_paths {
+        let candidate = dir.join("uchardet.h");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        let candidate = dir.join("uchardet").join("uchardet.h");
+        if candidate.exists() {
+            return Some(candidate);
+        }
     }
+    None
+}
 
-    let dst = config.build();
+fn generate_bindings(header: PathBuf, include_args: Vec<String>) {
+    let bindings = bindgen::Builder::default()
+        .header(header.to_str().expect("header path not valid UTF-8"))
+        .use_core()
+        .allowlist_function("uchardet_.*")
+        .allowlist_type("uchardet_t")
+        .clang_args(include_args)
+        .size_t_is_usize(true)
+        .generate()
+        .expect("Unable to generate bindings");
 
-    // Print out link instructions for Cargo.
-    println!("cargo:rustc-link-search=native={}/lib", dst.display());
-    println!("cargo:rustc-link-search=native={}/lib64", dst.display());
-    println!("cargo:rustc-link-lib=static=uchardet");
-
-    // Not needed on windows-msvc
-    if !target.contains("windows-msvc") {
-        // Decide how to link our C++ runtime.  Feel free to submit patches
-        // to make this work on your platform.  Other likely options are "c++"
-        // and "c++abi" depending on OS and compiler.
-        let cxx_abi = "stdc++";
-        println!("cargo:rustc-flags=-l {}", cxx_abi);
-    }
-
-    // make TLS work.  For more information see https://github.com/rust-lang/rust/issues/41607
-    // The right fix would be static-nobundle but that is nightly only.
-    if target.contains("windows-gnu") {
-        println!("cargo:rustc-link-lib=dylib=gcc_eh");
-        println!("cargo:rustc-link-lib=dylib=pthread");
-    }
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    bindings
+        .write_to_file(out_path.join("bindings.rs"))
+        .expect("Couldn't write bindings!");
 }

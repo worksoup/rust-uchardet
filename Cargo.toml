@@ -1,29 +1,49 @@
+# MIT License
+#
+# Copyright (c) 2026 worksoup <https://github.com/worksoup/>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 [package]
 name = "uchardet"
-version = "2.0.4"
-authors = ["Eric Kidd <git@randomhacks.net>"]
+version = "0.0.1"
+authors = ["worksoup"]
 
-description = "Detect character encodings using uchardet library"
-license = "Unlicense"
+edition = "2024"
 
-homepage = "https://github.com/emk/rust-uchardet"
-documentation = "http://docs.rs/uchardet"
-repository = "https://github.com/emk/rust-uchardet"
+description = "C++ 库 uchardet (git 版本) 的简单封装。"
+license = "MIT"
+
+homepage = "https://github.com/worksoup/rust-uchardet"
+documentation = "http://docs.rs/uchardet-git"
+repository = "https://github.com/worksoup/rust-uchardet"
 readme = "README.md"
 keywords = ["encoding", "text", "i18n"]
 
-[badges]
-maintenance = { status = "deprecated" }
-
 [features]
-# Allow access to unstable features when being built with a nightly compiler,
-# to keep travis-cargo happy and enable access to benchmarks.
-unstable = []
+default = ["encoding"]
+encoding = ["dep:encoding_rs"]
 
 [dependencies]
-libc = "0.2.17"
-error-chain = "0.10"
-uchardet-sys = { version = "2.0.3", path = "uchardet-sys" }
+thiserror = "2"
+uchardet-git-sys = { version = "0.0.1", path = "uchardet-git-sys" }
+encoding_rs = { version = "0.8", optional = true }
 
 [workspace]
-members = ["uchardet-sys"]
+members = ["uchardet-git-sys"]

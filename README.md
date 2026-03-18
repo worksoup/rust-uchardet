@@ -1,86 +1,101 @@
-[![Latest version](https://img.shields.io/crates/v/uchardet.svg)](https://crates.io/crates/uchardet) [![License](https://img.shields.io/crates/l/uchardet.svg)](http://unlicense.org/) [![Build Status](https://travis-ci.org/emk/rust-uchardet.svg?branch=master)](https://travis-ci.org/emk/rust-uchardet) [![Build status](https://ci.appveyor.com/api/projects/status/5qas95gi8935jtn8?svg=true)](https://ci.appveyor.com/project/emk/rust-uchardet) [![Documentation](https://img.shields.io/badge/documentation-docs.rs-yellow.svg)](https://docs.rs/uchardet/)
+## uchardet-git
 
-_**Deprecated in favor of [chardet][],** which is pure Rust. If you have
-use-case for this code, please feel free to open an issue. Simple PRs will
-still be read, and possibly accepted._
+**本 README 由 AI 撰写。**
 
-[chardet]: https://crates.io/crates/chardet
+[![crates.io](https://img.shields.io/crates/v/uchardet.svg)](https://crates.io/crates/uchardet)
+[![docs.rs](https://docs.rs/uchardet/badge.svg)](https://docs.rs/uchardet)
 
-Attempts to detect the character encoding of raw text using the `uchardet`
-library.
+**uchardet** 是一个用于检测未知字符编码的 Rust 库，它简单封装了 [uchardet](https://www.freedesktop.org/wiki/Software/uchardet/) C++ 库。
+该库能够分析字节流，并返回可能的编码名称及置信度，同时可选支持将结果映射到 [encoding_rs](https://crates.io/crates/encoding_rs) 中定义的 Web 兼容编码。
 
-Example:
+### 特性
+- 检测字节流的编码，返回编码名称（如 `"UTF-8"`, `"GB18030"`）。
+- 获取多个候选编码及其置信度。
+- （可选）通过 `encoding` 特性支持将检测结果转换为 `encoding_rs::Encoding`，便于后续编解码。
+- 自动链接系统预装的 `uchardet` 库（目前不支持），若无则从源码编译（需 CMake 和 C++ 编译器）。
+
+### 使用示例
 
 ```rust
-// At the top of the file.
-extern crate uchardet;
 use uchardet::detect_encoding_name;
 
-// Inside a function.
-assert_eq!("UTF-8",
-           detect_encoding_name(""©français"".as_bytes()).unwrap());
+let data = &[
+	0x46, 0x93, 0x72, 0x61, 0x6e, 0xe7, 0x6f, 0x69, 0x73, 0xe9, 0x94,
+];
+let encoding = detect_encoding_name(data).expect("检测失败");
+assert_eq!(encoding, "WINDOWS-1252");
+
+// 启用 `encoding` 特性后，可返回 `encoding_rs::Encoding`
+#[cfg(feature = "encoding")]
+{
+    use uchardet::detect_encoding;
+    let enc = detect_encoding(data).expect("检测失败");
+    assert_eq!(enc.name(), "windows-1252");
+}
 ```
 
-If you also would also like to detect the language used in the decoded
-text, see [rust-cld2](https://github.com/emk/rust-cld2).
+### 安装
 
-[cld2]: https://github.com/emk/rust-cld2
+在 `Cargo.toml` 中添加：
 
-### Getting uchardet (usually optional)
-
-If you wish, you may install `uchardet` using your system package manager.
-For example, under Ubuntu, you can run:
-
-```sh
-sudo apt-get install libuchardet-dev
+```toml
+[dependencies]
+uchardet = "0.0.1"
 ```
 
-If you skip this step, Cargo will attempt to compile `uchardet` from the
-bundled source code instead.  This should work if you have an appropriate
-`g++` (or MSVC) compiler installed, as well as `cmake`.  We test this build
-on Linux, OS X and Windows (both MinGW and MSVC) using Travis CI.
+默认开启 `encoding` 特性，如需禁用：
 
-### Contributing
+```toml
+uchardet = { version = "0.0.1", default-features = false }
+```
 
-As always, pull requests are welcome!  Please keep any patches as simple as
-possible and include unit tests; that makes it much easier for me to merge
-them.
+### 获取 uchardet 库
 
-If you want to get the C/C++ code building on another platform, please see
-`uchardef-sys/build.rb` and [this build script guide][build-script].
-You'll probably need to adjust some compiler options.  Please don't
-hesitate to ask questions; I'd love for this library to support more
-platforms.
+#### 使用系统库（目前不支持）
+**本库与 uchardet 最新 git 版本兼容，而与已发布版本不兼容。**
 
-[build-script]: http://doc.crates.io/build-script.html
+#### 自动编译捆绑源码
+构建脚本会自动编译项目内 `uchardet-git-sys/uchardet` 子模块中的源码。编译需要以下工具：
+- Rust 和 Cargo
+- C++ 编译器（如 `g++`, `clang++` 或 MSVC）
+- CMake ≥ 3.5
 
-In your first commit message, please include the following statement:
+此过程未经测试。
 
-> I dedicate any and all copyright interest in my contributions to this
-> project to the public domain. I make this dedication for the benefit of
-> the public at large and to the detriment of my heirs and successors. I
-> intend this dedication to be an overt act of relinquishment in perpetuity
-> of all present and future rights to this software under copyright law.
+### API 概览
 
-This allows us to keep the library legally unencumbered, and free for
-everyone to use.
+#### 主要类型
+- `UCharsetDetector`：核心检测器，支持分块喂入数据。
+- `Candidates`：检测结果候选列表，支持迭代和索引访问。
+- `Candidate`：单个候选，包含编码名称、置信度和语言（若有）。
 
-Contributors include:
+#### 便捷函数
+- `detect_encoding_name(data: impl AsRef<[u8]>) -> Result<String, Error>`  
+  返回最可能的编码名称（字符串形式）。
+- `detect_encoding(data: impl AsRef<[u8]>) -> Result<&'static encoding_rs::Encoding, Error>`  
+  返回 `encoding_rs::Encoding` 引用（需启用 `encoding` 特性）。
 
-- Boris-Chengbiao Zhou.  Support for newer upstream `uchardet` libraries
-  and Microsoft Windows, plus the error-chain conversion.
-- Wesley Moore. Fixes for Rust beta 2 and OS X.
+#### 高级用法
+```rust
+use uchardet::UCharsetDetector;
 
-Thank you very much for your contributions!
+let mut detector = UCharsetDetector::new();
+detector.feed_data(b"some data")?;
+detector.feed_data(b" more data")?;
+let candidates = detector.detect();
 
-### License
+for cand in &candidates {
+    println!("编码: {}", cand.encoding_name()?);
+    println!("置信度: {}", cand.confidence());
+    if let Some(lang) = cand.language()? {
+        println!("语言: {}", lang);
+    }
+}
+```
 
-New code in the `rust-uchardet` library is released into the public domain,
-as described in the `UNLICENSE` file.  However, several pre-existing pieces
-have their own licenses:
+### 许可证
+本项目采用 **MIT 许可证**。详情参见 [LICENSE](LICENSE) 文件。
 
-- The [`uchardet` C++ library][cxx] include in `uchardet-sys/uchardet` via
-  a git submodule is distributed under the Mozilla Public License 1.1.
-
-[cxx]: https://code.google.com/p/uchardet/
-[git2-rs]: https://github.com/alexcrichton/git2-rs/
+### 鸣谢
+- 原始 C++ 库 [uchardet](https://www.freedesktop.org/wiki/Software/uchardet/) 的开发者。
+- 本 Rust 包装受到 [rust-uchardet](https://github.com/emk/rust-uchardet) 早期版本的启发。

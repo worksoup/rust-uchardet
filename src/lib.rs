@@ -1,150 +1,78 @@
-//! A wrapper around the uchardet library. Detects character encodings.
-//!
-//! Note that the underlying implemention is written in C and C++, and I'm
-//! not aware of any security audits which have been performed against it.
-//!
-//! ```
-//! use uchardet::detect_encoding_name;
-//!
-//! assert_eq!("WINDOWS-1252",
-//!            detect_encoding_name(&[0x46, 0x93, 0x72, 0x61, 0x6e, 0xe7, 0x6f,
-//!                0x69, 0x73, 0xe9, 0x94]).unwrap());
-//! ```
-//!
-//! For more information, see [this project on
-//! GitHub](https://github.com/emk/rust-uchardet).
+// MIT License
+//
+// Copyright (c) 2026 worksoup <https://github.com/worksoup/>
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
-// Increase the compiler's recursion limit for the `error_chain` crate.
-#![recursion_limit = "1024"]
-#![deny(missing_docs)]
+mod candidates;
+mod detector;
+#[cfg(feature = "encoding")]
+pub mod encoding;
+mod error;
 
-#[macro_use]
-extern crate error_chain;
-extern crate libc;
-extern crate uchardet_sys as ffi;
+extern crate uchardet_git_sys as sys;
 
-use libc::size_t;
-use std::ffi::CStr;
-use std::str::from_utf8;
-use std::os::raw::c_char;
+pub use candidates::*;
+pub use detector::*;
+pub use error::*;
 
-pub use errors::*;
-
-/// We declare our `error_chain!` in a private submodule so that we can
-/// `allow(missing_docs)`.
-#[allow(missing_docs)]
-mod errors {
-    error_chain! {
-        errors {
-            UnrecognizableCharset {
-                description("unrecognizable charset")
-                display("uchardet was unable to recognize a charset")
-            }
-            OutOfMemory {
-                description("out of memory error")
-                display("uchardet ran out of memory")
-            }
-            Other(int: i32) {
-                description("unknown error")
-                display("uchardet returned unknown error {}", int)
-            }
-        }
-    }
+#[cfg(feature = "encoding")]
+pub fn detect_encoding(data: impl AsRef<[u8]>) -> Result<&'static encoding_rs::Encoding, Error> {
+    let candidates = UCharsetDetector::detect_data(data)?;
+    candidates
+        .best()
+        .ok_or(Error::UnrecognizableCharset)?
+        .encoding()
 }
 
-impl ErrorKind {
-    /// Convert an `nsresult` into a Rust error.  We panic if the error
-    /// value is zero.
-    fn from_nsresult(nsresult: ::ffi::nsresult) -> ErrorKind {
-        assert!(nsresult != 0);
-        match nsresult {
-            1 => ErrorKind::OutOfMemory,
-            int => ErrorKind::Other(int),
-        }
-    }
+pub fn detect_encoding_name(data: impl AsRef<[u8]>) -> Result<String, Error> {
+    let candidates = UCharsetDetector::detect_data(data)?;
+    candidates
+        .best()
+        .ok_or(Error::UnrecognizableCharset)?
+        .encoding_name()
+        .map(ToOwned::to_owned)
 }
 
-/// Detects the encoding of text using the uchardet library.
-///
-/// EXPERIMENTAL: This may be replaced by a better API soon.
-struct EncodingDetector {
-    ptr: ffi::uchardet_t
-}
-
-/// Return the name of the charset used in `data` or an error if uchardet
-/// was unable to detect a charset.
-///
-/// ```
-/// use uchardet::detect_encoding_name;
-///
-/// assert_eq!("ASCII",
-///            detect_encoding_name("ascii".as_bytes()).unwrap());
-/// assert_eq!("UTF-8",
-///            detect_encoding_name("©français".as_bytes()).unwrap());
-/// assert_eq!("WINDOWS-1252",
-///            detect_encoding_name(&[0x46, 0x93, 0x72, 0x61, 0x6e, 0xe7, 0x6f,
-///                0x69, 0x73, 0xe9, 0x94]).unwrap());
-/// ```
-pub fn detect_encoding_name(data: &[u8]) -> Result<String> {
-    let mut detector = EncodingDetector::new();
-    try!(detector.handle_data(data));
-    detector.data_end();
-    detector.charset()
-}
-
-impl EncodingDetector {
-    /// Create a new EncodingDetector.
-    fn new() -> EncodingDetector {
-        let ptr = unsafe { ffi::uchardet_new() };
-        assert!(!ptr.is_null());
-        EncodingDetector{ptr: ptr}
+#[cfg(test)]
+mod tests {
+    fn assert_detected_encoding(data: &[u8], expected: &str) {
+        let encoding =
+            crate::detect_encoding_name(data).expect("should have at least one candidate");
+        assert_eq!(encoding, expected);
     }
 
-    /// Pass a chunk of raw bytes to the detector. This is a no-op if a
-    /// charset has been detected.
-    fn handle_data(&mut self, data: &[u8]) -> Result<()> {
-        let nsresult = unsafe {
-            ffi::uchardet_handle_data(self.ptr, data.as_ptr() as *const c_char,
-                                      data.len() as size_t)
-        };
-        match nsresult {
-            0 => Ok(()),
-            int => {
-                Err(ErrorKind::from_nsresult(int).into())
-            }
-        }
+    #[test]
+    fn test_detect_encoding_ascii() {
+        assert_detected_encoding(b"ascii", "ASCII");
     }
 
-    /// Notify the detector that we're done calling `handle_data`, and that
-    /// we want it to make a guess as to our encoding. This is a no-op if
-    /// no data has been passed yet, or if an encoding has been detected
-    /// for certain. From reading the code, it appears that you can safely
-    /// call `handle_data` after calling this, but I'm not certain.
-    fn data_end(&mut self) {
-        unsafe { ffi::uchardet_data_end(self.ptr); }
+    #[test]
+    fn test_detect_encoding_utf8() {
+        assert_detected_encoding("©français".as_bytes(), "UTF-8");
     }
 
-    /// Get the decoder's current best guess as to the encoding. May return
-    /// an error if uchardet was unable to detect an encoding.
-    fn charset(&self) -> Result<String> {
-        unsafe {
-            let internal_str = ffi::uchardet_get_charset(self.ptr);
-            assert!(!internal_str.is_null());
-            let bytes = CStr::from_ptr(internal_str).to_bytes();
-            let charset = from_utf8(bytes);
-            match charset {
-                Err(_) =>
-                    panic!("uchardet_get_charset returned a charset name \
-                            containing invalid characters"),
-                Ok("") => Err(ErrorKind::UnrecognizableCharset.into()),
-                Ok(encoding) => Ok(encoding.to_string())
-            }
-        }
-    }
-}
-
-impl Drop for EncodingDetector {
-    fn drop(&mut self) {
-        unsafe { ffi::uchardet_delete(self.ptr) };
+    #[test]
+    fn test_detect_encoding_windows1252() {
+        let data = &[
+            0x46, 0x93, 0x72, 0x61, 0x6e, 0xe7, 0x6f, 0x69, 0x73, 0xe9, 0x94,
+        ];
+        assert_detected_encoding(data, "WINDOWS-1252");
     }
 }
