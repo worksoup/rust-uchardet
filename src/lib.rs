@@ -20,6 +20,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#[cfg(feature = "auto_encoding_reader")]
+pub mod auto_encoding_reader;
 mod candidates;
 mod detector;
 #[cfg(feature = "encoding")]

@@ -37,13 +37,15 @@ readme = "README.md"
 keywords = ["encoding", "text", "i18n"]
 
 [features]
-default = ["encoding"]
+default = ["auto_encoding_reader", "encoding"]
+auto_encoding_reader = ["encoding", "dep:reader_ext"]
 encoding = ["dep:encoding_rs"]
 
 [dependencies]
+encoding_rs = { version = "0.8", optional = true }
+reader_ext = { git = "https://github.com/worksoup/reader_ext.git", optional = true }
 thiserror = "2"
 uchardet-git-sys = { version = "0.0.1", path = "uchardet-git-sys" }
-encoding_rs = { version = "0.8", optional = true }
 
 [workspace]
 members = ["uchardet-git-sys"]
