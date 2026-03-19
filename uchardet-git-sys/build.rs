@@ -53,21 +53,25 @@ fn main() {
         };
         let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
         let cmake_build_type = if profile == "release" {
-            "Release"
+            Some("Release")
+        } else if target_os.as_str() != "windows" {
+            None
         } else {
-            "RelWithDebInfo"
+            Some("RelWithDebInfo")
         };
         if let Some(cpp_stdlib) = cpp_stdlib {
             println!("cargo:rustc-link-lib={}", cpp_stdlib)
         }
         eprintln!("pkg-config failed, building uchardet from source");
-        let dst = Config::new("uchardet")
+        let mut config = Config::new("uchardet");
+        config
             .define("BUILD_BINARY", "OFF")
             .define("BUILD_STATIC", "ON")
-            .define("BUILD_SHARED_LIBS", "OFF")
-            .define("CMAKE_BUILD_TYPE", cmake_build_type)
-            .build();
-
+            .define("BUILD_SHARED_LIBS", "OFF");
+        if let Some(cmake_build_type) = cmake_build_type {
+            config.define("CMAKE_BUILD_TYPE", cmake_build_type);
+        }
+        let dst = config.build();
         // 输出链接指令
         println!("cargo:rustc-link-search=native={}/lib", dst.display());
         println!("cargo:rustc-link-search=native={}/lib64", dst.display());
