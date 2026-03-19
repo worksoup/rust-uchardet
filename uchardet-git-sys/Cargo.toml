@@ -36,6 +36,9 @@ repository = "https://github.com/worksoup/rust-uchardet"
 
 links = "uchardet"
 
+[features]
+source_no_patch = []
+
 [dependencies]
 
 [build-dependencies]
