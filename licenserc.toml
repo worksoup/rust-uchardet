@@ -44,7 +44,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-excludes = ["uchardet-git-sys/uchardet/*"]
+excludes = [
+    "uchardet-git-sys/uchardet/*",
+    "uchardet-git-sys/src/bindings.rs",
+    "tests/data/*",
+]
 
 [properties]
 inceptionYear = 2026
