@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use uchardet::{Error, CharsetDetector};
+use uchardet_git::{Error, CharsetDetector};
 
 // 原仓库中跳过的测试。
 const SKIP_TESTS: &[(&str, &str)] = &[
