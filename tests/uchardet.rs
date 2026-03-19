@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use uchardet::{Error, UCharsetDetector};
+use uchardet::{Error, CharsetDetector};
 
 // 原仓库中跳过的测试。
 const SKIP_TESTS: &[(&str, &str)] = &[
@@ -30,7 +30,7 @@ fn run_test_file(
     expected_charset: &str,
 ) -> Result<(), Error> {
     let data = fs::read(file_path).expect("无法读取测试文件");
-    let mut detector = UCharsetDetector::new();
+    let mut detector = CharsetDetector::new();
     detector.feed_data(&data)?;
     let candidates = detector.detect();
     let candidate = candidates.best().expect("检测结果为空");

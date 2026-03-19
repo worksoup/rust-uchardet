@@ -36,7 +36,7 @@ pub use error::*;
 
 #[cfg(feature = "encoding")]
 pub fn detect_encoding(data: impl AsRef<[u8]>) -> Result<&'static encoding_rs::Encoding, Error> {
-    let candidates = UCharsetDetector::detect_data(data)?;
+    let candidates = CharsetDetector::detect_data(data)?;
     candidates
         .best()
         .ok_or(Error::UnrecognizableCharset)?
@@ -44,7 +44,7 @@ pub fn detect_encoding(data: impl AsRef<[u8]>) -> Result<&'static encoding_rs::E
 }
 
 pub fn detect_encoding_name(data: impl AsRef<[u8]>) -> Result<String, Error> {
-    let candidates = UCharsetDetector::detect_data(data)?;
+    let candidates = CharsetDetector::detect_data(data)?;
     candidates
         .best()
         .ok_or(Error::UnrecognizableCharset)?

@@ -24,23 +24,23 @@ use std::ffi::{CString, c_char};
 
 use crate::{Candidates, Error};
 
-pub struct UCharsetDetector {
+pub struct CharsetDetector {
     pub(crate) ptr: sys::uchardet_t,
     pub(crate) external_error_occurred: bool,
 }
 
-impl Default for UCharsetDetector {
+impl Default for CharsetDetector {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl UCharsetDetector {
-    pub fn new() -> UCharsetDetector {
+impl CharsetDetector {
+    pub fn new() -> CharsetDetector {
         let ptr = unsafe { sys::uchardet_new() };
         debug_assert!(!ptr.is_null());
-        UCharsetDetector {
+        CharsetDetector {
             ptr,
             external_error_occurred: false,
         }
@@ -76,7 +76,7 @@ impl UCharsetDetector {
     }
 
     pub fn detect_data(data: impl AsRef<[u8]>) -> Result<Candidates, Error> {
-        let mut detector = UCharsetDetector::new();
+        let mut detector = CharsetDetector::new();
         detector.feed_data(data.as_ref())?;
         Ok(detector.detect())
     }
@@ -98,7 +98,7 @@ impl UCharsetDetector {
     }
 }
 
-impl Drop for UCharsetDetector {
+impl Drop for CharsetDetector {
     fn drop(&mut self) {
         unsafe { sys::uchardet_delete(self.ptr) };
     }

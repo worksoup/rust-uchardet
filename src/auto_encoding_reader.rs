@@ -1,4 +1,4 @@
-use crate::{Error as UchardetError, UCharsetDetector};
+use crate::{CharsetDetector, Error as DetectorError};
 use encoding_rs::Decoder;
 use reader_ext::Rewind;
 use std::io::{Read, Seek};
@@ -16,7 +16,7 @@ pub enum EncodingError {
 
     /// uchardet 库错误
     #[error(transparent)]
-    UchardetError(#[from] UchardetError),
+    DetectorError(#[from] DetectorError),
 }
 
 /// 自动检测和转换文本编码的读取器
@@ -122,7 +122,7 @@ impl<R: Read> AutoEncodingReader<R> {
         }
 
         // 使用 uchardet 检测编码
-        let candidates = UCharsetDetector::detect_data(&buf)?;
+        let candidates = CharsetDetector::detect_data(&buf)?;
         let best_candidate = candidates.best();
 
         if let Some(candidate) = best_candidate {

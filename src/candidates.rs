@@ -22,23 +22,23 @@
 
 use std::ffi::CStr;
 
-use crate::{Error, UCharsetDetector};
+use crate::{Error, CharsetDetector};
 
 pub struct Candidates {
-    pub(crate) detector: UCharsetDetector,
+    pub(crate) detector: CharsetDetector,
     pub(crate) n_candidates: usize,
 }
 
 impl Candidates {
     pub fn detect(data: impl AsRef<[u8]>) -> Result<Candidates, Error> {
-        UCharsetDetector::detect_data(data)
+        CharsetDetector::detect_data(data)
     }
 
-    pub fn detector(&self) -> &UCharsetDetector {
+    pub fn detector(&self) -> &CharsetDetector {
         &self.detector
     }
 
-    pub fn reset(mut self) -> UCharsetDetector {
+    pub fn reset(mut self) -> CharsetDetector {
         self.detector.reset();
         self.detector
     }

@@ -43,7 +43,7 @@ encoding = ["dep:encoding_rs"]
 
 [dependencies]
 encoding_rs = { version = "0.8", optional = true }
-reader_ext = { git = "https://github.com/worksoup/reader_ext.git", optional = true }
+reader_ext = { version = "0.0.1", optional = true }
 thiserror = "2"
 uchardet-git-sys = { version = "0.0.1", path = "uchardet-git-sys" }
 
