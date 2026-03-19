@@ -1,5 +1,7 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 use uchardet_git::{CharsetDetector, Error};
 
 // 原仓库中跳过的测试。
@@ -63,6 +65,52 @@ fn run_test_file(
     Ok(())
 }
 
+/// 运行 AutoEncodingReader 的解码测试（验证解码后的 UTF-8 内容是否与预期一致）
+#[cfg(feature = "auto_encoding_reader")]
+fn test_auto_encoding_reader_for_file(
+    file_path: &Path,
+    expected_encoding_name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Read;
+    use uchardet_git::auto_encoding_reader::AutoEncodingReader;
+
+    let Some(expected_encoding) = uchardet_git::encoding::to_standard(expected_encoding_name)
+    else {
+        eprintln!(
+            "警告: 编码 {} 不被 encoding_rs 支持，跳过测试",
+            expected_encoding_name
+        );
+        return Ok(());
+    };
+
+    // 使用预期编码解码得到参考 UTF-8 字符串
+    let raw_bytes = fs::read(file_path)?;
+    let (expected_str, _, had_errors) = expected_encoding.decode(&raw_bytes);
+    if had_errors {
+        eprintln!(
+            "警告: 预期编码 {} 解码 {} 时出现替换字符",
+            expected_encoding_name,
+            file_path.display()
+        );
+    }
+
+    // 使用 AutoEncodingReader 解码（将预期编码作为后备，确保即使检测失败也能解码）
+    let file = fs::File::open(file_path)?;
+    let fallbacks = &[expected_encoding];
+    let mut reader = AutoEncodingReader::new_with_fallbacks_default(file, fallbacks)
+        .map_err(|e| format!("创建 AutoEncodingReader 失败: {}", e))?;
+
+    let mut decoded_bytes = Vec::new();
+    reader.read_to_end(&mut decoded_bytes)?;
+    let decoded_str = String::from_utf8(decoded_bytes)?;
+
+    if decoded_str != expected_str {
+        return Err(format!("解码内容不匹配，文件: {}", file_path.display()).into());
+    }
+
+    Ok(())
+}
+
 #[test]
 fn test_uchardet_data() {
     let test_dir = test_data_dir();
@@ -71,7 +119,7 @@ fn test_uchardet_data() {
     assert!(
         extra_test_dir.exists(),
         "额外测试数据目录不存在: {:?}",
-        test_dir
+        extra_test_dir
     );
 
     for (is_extra, entry) in fs::read_dir(test_dir)
@@ -90,7 +138,6 @@ fn test_uchardet_data() {
         }
         let lang = lang_dir.file_name().unwrap().to_str().unwrap();
         if lang.len() != 2 {
-            eprintln!("语言代码长度不为 2: `{lang}`.");
             continue;
         }
 
@@ -113,8 +160,14 @@ fn test_uchardet_data() {
                 println!("正在运行额外的测试: {}/{}", lang, expected_charset);
             }
 
+            // 运行原始的编码检测测试
             if let Err(e) = run_test_file(&file_path, lang, expected_charset) {
-                panic!("测试失败 {:?}: {}", file_path, e);
+                panic!("编码检测测试失败 {:?}: {}", file_path, e);
+            }
+
+            #[cfg(feature = "auto_encoding_reader")]
+            if let Err(e) = test_auto_encoding_reader_for_file(&file_path, expected_charset) {
+                panic!("AutoEncodingReader 解码测试失败 {:?}: {}", file_path, e);
             }
         }
     }

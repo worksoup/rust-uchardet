@@ -21,15 +21,18 @@
 // SOFTWARE.
 
 pub fn to_standard(encoding: &str) -> Option<&'static encoding_rs::Encoding> {
-    match encoding {
-        "MAC-CENTRALEUROPE" => Some(encoding_rs::X_MAC_CYRILLIC),
-        "MAC-CYRILLIC" => Some(encoding_rs::X_MAC_CYRILLIC),
-        "HZ-GB-2312" => None,
-        "ISO-2022-CN" => None,
-        "ISO-2022-KR" => None,
-        _ => encoding_rs::Encoding::for_label_no_replacement(encoding.as_bytes()),
+    if encoding.eq_ignore_ascii_case("MAC-CYRILLIC") {
+        return Some(encoding_rs::X_MAC_CYRILLIC);
     }
+    if encoding.eq_ignore_ascii_case("HZ-GB-2312")
+        || encoding.eq_ignore_ascii_case("ISO-2022-CN")
+        || encoding.eq_ignore_ascii_case("ISO-2022-KR")
+    {
+        return None;
+    }
+    encoding_rs::Encoding::for_label_no_replacement(encoding.as_bytes())
 }
+
 #[cfg(test)]
 mod tests {
 
@@ -95,6 +98,9 @@ mod tests {
         // X-*
         assert_no_encoding_for_name!("MAC-CENTRALEUROPE");
         assert_no_encoding_for_name!("MAC-CYRILLIC");
+        // X-*
+        assert_no_encoding_for_name!("X-MAC-CENTRALEUROPE");
+        assert_encoding_for_name!(X_MAC_CYRILLIC, "X-MAC-CYRILLIC");
 
         // REPLACEMENT
         assert_encoding_for_name!(REPLACEMENT, "HZ-GB-2312");
