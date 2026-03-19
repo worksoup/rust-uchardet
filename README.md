@@ -2,8 +2,8 @@
 
 **本 README 由 AI 撰写。**
 
-[![crates.io](https://img.shields.io/crates/v/uchardet.svg)](https://crates.io/crates/uchardet)
-[![docs.rs](https://docs.rs/uchardet/badge.svg)](https://docs.rs/uchardet)
+[![crates.io](https://img.shields.io/crates/v/uchardet-git.svg)](https://crates.io/crates/uchardet-git)
+[![docs.rs](https://docs.rs/uchardet-git/badge.svg)](https://docs.rs/uchardet-git)
 
 **uchardet** 是一个用于检测未知字符编码的 Rust 库，它简单封装了 [uchardet](https://www.freedesktop.org/wiki/Software/uchardet/) C++ 库。
 该库能够分析字节流，并返回可能的编码名称及置信度，同时可选支持将结果映射到 [encoding_rs](https://crates.io/crates/encoding_rs) 中定义的 Web 兼容编码。
