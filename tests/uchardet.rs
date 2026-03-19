@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use uchardet_git::{Error, CharsetDetector};
+use uchardet_git::{CharsetDetector, Error};
 
 // 原仓库中跳过的测试。
 const SKIP_TESTS: &[(&str, &str)] = &[
@@ -90,6 +90,7 @@ fn test_uchardet_data() {
         }
         let lang = lang_dir.file_name().unwrap().to_str().unwrap();
         if lang.len() != 2 {
+            eprintln!("语言代码长度不为 2: `{lang}`.");
             continue;
         }
 
