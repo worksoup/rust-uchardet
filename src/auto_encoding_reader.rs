@@ -229,6 +229,14 @@ impl<R: Read> AutoEncodingReader<R> {
     pub fn had_replacement_or_cant_map(&self) -> bool {
         self.had_replacement_or_cant_map
     }
+
+    pub fn decoder(&self) -> &Decoder {
+        &self.decoder
+    }
+
+    pub fn encoding(&self) -> &'static encoding_rs::Encoding {
+        self.decoder().encoding()
+    }
 }
 
 impl<R: Read> Read for AutoEncodingReader<R> {
