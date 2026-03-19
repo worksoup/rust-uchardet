@@ -23,4 +23,8 @@
 #![no_std]
 #![allow(non_camel_case_types)]
 
+#[cfg(feature = "use_bindgen")]
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+
+#[cfg(not(feature = "use_bindgen"))]
+include!("./bindings.rs");

@@ -123,6 +123,9 @@ fn find_header(include_paths: &[PathBuf]) -> Option<PathBuf> {
 }
 
 fn generate_bindings(out_path: impl AsRef<Path>, header: PathBuf, include_args: Vec<String>) {
+    if !cfg!(feature = "use_bindgen") {
+        return;
+    }
     let bindings = bindgen::Builder::default()
         .header(header.to_str().expect("header path not valid UTF-8"))
         .use_core()
