@@ -55,9 +55,9 @@ fn main() {
         let cmake_build_type = if profile == "release" {
             Some("Release")
         } else if target_os.as_str() != "windows" {
-            None
-        } else {
             Some("RelWithDebInfo")
+        } else {
+            None
         };
         if let Some(cpp_stdlib) = cpp_stdlib {
             println!("cargo:rustc-link-lib={}", cpp_stdlib)
