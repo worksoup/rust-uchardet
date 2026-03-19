@@ -17,6 +17,9 @@ pub enum EncodingError {
     /// uchardet 库错误
     #[error(transparent)]
     DetectorError(#[from] DetectorError),
+
+    #[error("未设置底层读取器")]
+    NoReader,
 }
 
 /// 自动检测和转换文本编码的读取器
@@ -26,8 +29,8 @@ pub enum EncodingError {
 pub struct AutoEncodingReader<R: Read> {
     /// 底层原始读取器
     reader: R,
-    /// 从底层读取器读取数据的缓冲区（用于检测和后续读取）
-    buffer: Box<[u8; 8 * 1024]>,
+    /// 从底层读取器读取数据的可变大小的读取缓冲区（用于检测和后续读取）
+    buffer: Box<[u8]>,
     /// 已读取但尚未解码的原始字节缓冲区（包括用于检测的部分）
     read_buffer: Vec<u8>,
     /// 已解码为 UTF-8 的输出缓冲区
@@ -50,7 +53,7 @@ impl<R: Read + Seek> Rewind for AutoEncodingReader<R> {
         self.read_buffer.clear();
         self.write_buffer.clear();
         // 重置解码器为初始状态
-        self.decoder = self.decoder.encoding().new_decoder_without_bom_handling();
+        self.decoder = self.decoder.encoding().new_decoder();
         self.had_replacement_or_cant_map = false;
         self.transcode_done = false;
         self.eof = false;
@@ -59,16 +62,18 @@ impl<R: Read + Seek> Rewind for AutoEncodingReader<R> {
 }
 
 impl<R: Read> AutoEncodingReader<R> {
-    /// 使用已确定的编码创建读取器（内部使用）
-    fn new_with_decoder(
+    /// 内部构造：使用已知解码器和初始数据创建读取器
+    pub(crate) fn new_with_decoder(
         reader: R,
         decoder: Decoder,
-        mut initial_data: Vec<u8>,
-        mut decoded_data: Vec<u8>,
+        initial_data: Vec<u8>,
+        decoded_data: Vec<u8>,
+        read_buffer_size: usize,
     ) -> Self {
         let no_transcoding_needed = decoder.encoding().name() == "UTF-8";
+        let (mut initial_data, mut decoded_data) = (initial_data, decoded_data);
         if no_transcoding_needed {
-            // 若包含 BOM，跳过 BOM
+            // 跳过 BOM
             if initial_data
                 .windows(3)
                 .next()
@@ -77,14 +82,16 @@ impl<R: Read> AutoEncodingReader<R> {
                 initial_data.drain(..3);
             }
             if decoded_data.is_empty() {
-                (initial_data, decoded_data) = (decoded_data, initial_data)
+                (initial_data, decoded_data) = (decoded_data, initial_data);
             } else {
                 decoded_data.append(&mut initial_data);
             }
         }
+        // 分配指定大小的读取缓冲区
+        let buffer = vec![0u8; read_buffer_size].into_boxed_slice();
         Self {
             reader,
-            buffer: Box::new([0u8; 8 * 1024]),
+            buffer,
             read_buffer: initial_data,
             write_buffer: decoded_data,
             decoder,
@@ -95,88 +102,48 @@ impl<R: Read> AutoEncodingReader<R> {
         }
     }
 
-    /// 使用编码检测和后备编码列表创建新的读取器
+    /// 使用检测缓冲区大小、读取缓冲区大小和后备编码列表创建读取器
     ///
-    /// 该方法会读取前 8KB 数据用于编码检测，如果无法检测则尝试后备编码。
+    /// 该方法会读取检测缓冲区大小的数据用于编码检测，如果无法检测则尝试后备编码。
     ///
     /// # 参数
     /// - `reader`: 底层字节流读取器
     /// - `fallbacks`: 编码检测失败时的后备编码列表（按优先级顺序）
+    /// - `detect_buffer_size`: 用于编码检测的初始读取字节数
+    /// - `read_buffer_size`: 后续读取时使用的内部缓冲区大小
     ///
     /// # 错误
     /// 当无法检测到合适的编码时会返回 `EncodingError::CharsetError`
     pub fn new_with_fallbacks(
-        mut reader: R,
+        reader: R,
         fallbacks: &[&'static encoding_rs::Encoding],
+        detect_buffer_size: usize,
+        read_buffer_size: usize,
     ) -> Result<Self, EncodingError> {
-        // 读取 8KB 数据用于检测
-        let mut buf = vec![0u8; 8 * 1024];
-        let n = reader.read(&mut buf)?;
-        let eof = n < buf.len();
-        buf.truncate(n);
-
-        if n == 0 {
-            // 空文件，直接返回 UTF-8 解码器
-            let decoder = encoding_rs::UTF_8.new_decoder_without_bom_handling();
-            return Ok(Self::new_with_decoder(reader, decoder, buf, vec![]));
-        }
-
-        // 使用 uchardet 检测编码
-        let candidates = CharsetDetector::detect_data(&buf)?;
-        let best_candidate = candidates.best();
-
-        if let Some(candidate) = best_candidate {
-            let name = candidate.encoding_name()?;
-            // 将 uchardet 名称映射为 encoding_rs::Encoding
-            let encoding = crate::encoding::to_standard(name)
-                .or_else(|| encoding_rs::Encoding::for_label(name.as_bytes()));
-            if let Some(enc) = encoding {
-                let decoder = enc.new_decoder_without_bom_handling();
-                return Ok(Self::new_with_decoder(reader, decoder, buf, vec![]));
-            } else {
-                // 映射失败，回退到后备编码
-            }
-        }
-        if eof {
-            let mut buf_ = Vec::new();
-            // 编码检测失败且已到达文件末尾，尝试后备编码
-            for &fallback in fallbacks {
-                let mut reader_ = AutoEncodingReader::new_with_decoder(
-                    &*buf,
-                    fallback.new_decoder(),
-                    vec![],
-                    Vec::with_capacity(5 * 512),
-                );
-                buf_.clear();
-                match reader_.read_to_end(&mut buf_) {
-                    Ok(_) => {
-                        return Ok(AutoEncodingReader::new_with_decoder(
-                            reader,
-                            reader_.decoder,
-                            vec![],
-                            buf_,
-                        ));
-                    }
-                    Err(_) => {
-                        continue;
-                    }
-                }
-            }
-        }
-
-        // 所有后备编码都尝试失败
-        Err(EncodingError::CharsetError(
-            "未能检测到合适的字符编码，且所有后备编码均失败。".to_owned(),
-        ))
+        AutoEncodingReaderBuilder::new()
+            .reader(reader)
+            .fallbacks(fallbacks)
+            .detect_buffer_size(detect_buffer_size)
+            .read_buffer_size(read_buffer_size)
+            .build()
     }
 
-    /// 使用默认后备编码列表创建新的读取器
+    /// 简便方法：使用默认检测缓冲区大小 (8KB) 和读取缓冲区大小 (8KB)
+    #[inline]
+    pub fn new_with_fallbacks_default(
+        reader: R,
+        fallbacks: &[&'static encoding_rs::Encoding],
+    ) -> Result<Self, EncodingError> {
+        Self::new_with_fallbacks(reader, fallbacks, 8192, 8192)
+    }
+
+    /// 使用默认检测缓冲区大小 (8KB) 和读取缓冲区大小 (8KB)、默认后备编码列表创建新的读取器
     ///
-    /// 默认后备编码：GB18030, GBK, UTF_8, BIG5（针对中文环境）
+    /// 默认后备编码：GB18030, GBK, BIG5（针对中文环境）
     #[inline]
     pub fn new(reader: R) -> Result<Self, EncodingError> {
         let fallbacks = [encoding_rs::GB18030, encoding_rs::GBK, encoding_rs::BIG5];
-        Self::new_with_fallbacks(reader, &fallbacks)
+        Self::new_with_fallbacks_default(reader, &fallbacks)
     }
 
     /// 从输出缓冲区复制数据到用户提供的缓冲区
@@ -229,13 +196,14 @@ impl<R: Read> AutoEncodingReader<R> {
     pub fn had_replacement_or_cant_map(&self) -> bool {
         self.had_replacement_or_cant_map
     }
-
+    /// 返回当前使用的解码器
     pub fn decoder(&self) -> &Decoder {
         &self.decoder
     }
 
+    /// 返回当前使用的编码
     pub fn encoding(&self) -> &'static encoding_rs::Encoding {
-        self.decoder().encoding()
+        self.decoder.encoding()
     }
 }
 
@@ -278,10 +246,156 @@ impl<R: Read> Read for AutoEncodingReader<R> {
         }
 
         // 从底层读取器读取更多数据
-        let n = self.reader.read(self.buffer.as_mut_slice())?;
+        let n = self.reader.read(self.buffer.as_mut())?;
         self.read_buffer.extend_from_slice(&self.buffer[..n]);
         self.eof = n == 0;
         let num_written = self.decode(buffer);
         Ok(num_written)
+    }
+}
+
+/// 构建器，用于配置 AutoEncodingReader
+pub struct AutoEncodingReaderBuilder<R> {
+    reader: Option<R>,
+    fallbacks: Vec<&'static encoding_rs::Encoding>,
+    detect_buffer_size: usize,
+    read_buffer_size: usize,
+    language_weights: Vec<(String, f32)>,
+    default_weight: Option<f32>,
+}
+
+impl<R: Read> AutoEncodingReaderBuilder<R> {
+    /// 创建新的构建器
+    pub fn new() -> Self {
+        Self {
+            reader: None,
+            fallbacks: Vec::new(),
+            detect_buffer_size: 8192,
+            read_buffer_size: 8192,
+            language_weights: Vec::new(),
+            default_weight: None,
+        }
+    }
+
+    /// 设置底层读取器（必需）
+    pub fn reader(mut self, reader: R) -> Self {
+        self.reader = Some(reader);
+        self
+    }
+
+    /// 设置后备编码列表
+    pub fn fallbacks(mut self, fallbacks: &[&'static encoding_rs::Encoding]) -> Self {
+        self.fallbacks = fallbacks.to_vec();
+        self
+    }
+
+    /// 设置检测缓冲区大小（字节数）
+    pub fn detect_buffer_size(mut self, size: usize) -> Self {
+        self.detect_buffer_size = size;
+        self
+    }
+
+    /// 设置后续读取缓冲区大小（字节数）
+    pub fn read_buffer_size(mut self, size: usize) -> Self {
+        self.read_buffer_size = size;
+        self
+    }
+
+    /// 添加语言权重（可多次调用）
+    pub fn language_weight(mut self, language: &str, weight: f32) -> Self {
+        self.language_weights.push((language.to_owned(), weight));
+        self
+    }
+
+    /// 设置默认权重
+    pub fn default_weight(mut self, weight: f32) -> Self {
+        self.default_weight = Some(weight);
+        self
+    }
+
+    /// 构建 AutoEncodingReader
+    pub fn build(self) -> Result<AutoEncodingReader<R>, EncodingError> {
+        let mut reader = self.reader.ok_or(EncodingError::NoReader)?;
+
+        // 读取 detect_buffer_size 字节用于检测
+        let mut buf = vec![0u8; self.detect_buffer_size];
+        let n = reader.read(&mut buf)?;
+        let eof = n < buf.len();
+        buf.truncate(n);
+
+        if n == 0 {
+            // 空文件，直接返回 UTF-8 解码器
+            let decoder = encoding_rs::UTF_8.new_decoder_without_bom_handling();
+            return Ok(AutoEncodingReader::new_with_decoder(
+                reader,
+                decoder,
+                buf,
+                vec![],
+                self.read_buffer_size,
+            ));
+        }
+
+        // 使用 uchardet 检测编码
+        let mut detector = CharsetDetector::new();
+        for (lang, weight) in &self.language_weights {
+            detector.weigh_language(lang, *weight)?;
+        }
+        if let Some(w) = self.default_weight {
+            detector.set_default_weight(w);
+        }
+
+        detector.feed_data(&buf)?;
+        let candidates = detector.detect();
+        let best_candidate = candidates.best();
+
+        if let Some(candidate) = best_candidate {
+            let name = candidate.encoding_name()?;
+            let encoding = crate::encoding::to_standard(name)
+                .or_else(|| encoding_rs::Encoding::for_label(name.as_bytes()));
+            if let Some(enc) = encoding {
+                let decoder = enc.new_decoder();
+                return Ok(AutoEncodingReader::new_with_decoder(
+                    reader,
+                    decoder,
+                    buf,
+                    vec![],
+                    self.read_buffer_size,
+                ));
+            }
+        }
+
+        // 检测失败或编码名不支持，尝试后备编码
+        if eof {
+            let mut decoded = Vec::new();
+            for &fallback in &self.fallbacks {
+                let mut tmp_reader = AutoEncodingReader::new_with_decoder(
+                    &*buf,
+                    fallback.new_decoder(),
+                    vec![],
+                    Vec::with_capacity(5 * 512),
+                    self.read_buffer_size,
+                );
+                decoded.clear();
+                if tmp_reader.read_to_end(&mut decoded).is_ok() {
+                    return Ok(AutoEncodingReader::new_with_decoder(
+                        reader,
+                        tmp_reader.decoder,
+                        vec![],
+                        decoded,
+                        self.read_buffer_size,
+                    ));
+                }
+            }
+        }
+
+        Err(EncodingError::CharsetError(
+            "未能检测到合适的字符编码，且所有后备编码均失败。".to_owned(),
+        ))
+    }
+}
+
+impl<R: Read> Default for AutoEncodingReaderBuilder<R> {
+    fn default() -> Self {
+        Self::new()
     }
 }
