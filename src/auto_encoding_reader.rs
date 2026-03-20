@@ -142,8 +142,7 @@ impl<R: Read> AutoEncodingReader<R> {
         detect_buffer_size: usize,
         read_buffer_size: usize,
     ) -> Result<Self, EncodingError> {
-        AutoEncodingReaderBuilder::new()
-            .reader(reader)
+        AutoEncodingReaderBuilder::with_reader(reader)
             .fallbacks(fallbacks)
             .detect_buffer_size(detect_buffer_size)
             .read_buffer_size(read_buffer_size)
@@ -278,7 +277,7 @@ impl<R: Read> Read for AutoEncodingReader<R> {
 
 /// 构建器，用于配置 AutoEncodingReader
 pub struct AutoEncodingReaderBuilder<R> {
-    reader: Option<R>,
+    reader: R,
     fallbacks: Vec<&'static encoding_rs::Encoding>,
     detect_buffer_size: usize,
     read_buffer_size: usize,
@@ -288,21 +287,15 @@ pub struct AutoEncodingReaderBuilder<R> {
 
 impl<R: Read> AutoEncodingReaderBuilder<R> {
     /// 创建新的构建器
-    pub fn new() -> Self {
+    pub fn with_reader(reader: R) -> Self {
         Self {
-            reader: None,
+            reader,
             fallbacks: Vec::new(),
             detect_buffer_size: 8192,
             read_buffer_size: 8192,
             language_weights: Vec::new(),
             default_weight: None,
         }
-    }
-
-    /// 设置底层读取器（必需）
-    pub fn reader(mut self, reader: R) -> Self {
-        self.reader = Some(reader);
-        self
     }
 
     /// 设置后备编码列表
@@ -337,7 +330,7 @@ impl<R: Read> AutoEncodingReaderBuilder<R> {
 
     /// 构建 AutoEncodingReader
     pub fn build(self) -> Result<AutoEncodingReader<R>, EncodingError> {
-        let mut reader = self.reader.ok_or(EncodingError::NoReader)?;
+        let mut reader = self.reader;
 
         // 读取 detect_buffer_size 字节用于检测
         let mut buf = vec![0u8; self.detect_buffer_size];
@@ -413,11 +406,5 @@ impl<R: Read> AutoEncodingReaderBuilder<R> {
         Err(EncodingError::CharsetError(
             "未能检测到合适的字符编码，且所有后备编码均失败。".to_owned(),
         ))
-    }
-}
-
-impl<R: Read> Default for AutoEncodingReaderBuilder<R> {
-    fn default() -> Self {
-        Self::new()
     }
 }
