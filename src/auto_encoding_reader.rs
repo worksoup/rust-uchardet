@@ -39,9 +39,6 @@ pub enum EncodingError {
     /// uchardet 库错误
     #[error(transparent)]
     DetectorError(#[from] DetectorError),
-
-    #[error("未设置底层读取器")]
-    NoReader,
 }
 
 /// 自动检测和转换文本编码的读取器
