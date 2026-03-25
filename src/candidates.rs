@@ -22,7 +22,7 @@
 
 use std::ffi::CStr;
 
-use crate::{Error, CharsetDetector};
+use crate::{CharsetDetector, Error};
 
 pub struct Candidates {
     pub(crate) detector: CharsetDetector,
@@ -78,8 +78,8 @@ pub struct Candidate<'a> {
 
 impl<'a> Candidate<'a> {
     #[cfg(feature = "encoding")]
-    pub fn encoding(&self) -> Result<&'static encoding_rs::Encoding, Error> {
-        crate::encoding::to_standard(self.encoding_name()?).ok_or(Error::NonStandardCharset)
+    pub fn encoding_whatwg(&self) -> Result<&'static encoding_rs::Encoding, Error> {
+        crate::encoding::as_whatwg(self.encoding_name()?).ok_or(Error::NonStandardCharset)
     }
 
     pub fn encoding_name(&self) -> Result<&'a str, Error> {

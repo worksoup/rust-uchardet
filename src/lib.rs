@@ -20,6 +20,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+#![doc = include_str!("../README.md")]
+
 #[cfg(feature = "auto_encoding_reader")]
 pub mod auto_encoding_reader;
 mod candidates;
@@ -40,7 +42,7 @@ pub fn detect_encoding(data: impl AsRef<[u8]>) -> Result<&'static encoding_rs::E
     candidates
         .best()
         .ok_or(Error::UnrecognizableCharset)?
-        .encoding()
+        .encoding_whatwg()
 }
 
 pub fn detect_encoding_name(data: impl AsRef<[u8]>) -> Result<String, Error> {

@@ -94,9 +94,9 @@ fn test_auto_encoding_reader_for_file(
     expected_encoding_name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Read;
-    use uchardet_git::auto_encoding_reader::AutoEncodingReader;
+    use uchardet_git::auto_encoding_reader::AutoEncodingReaderBuilder;
 
-    let Some(expected_encoding) = uchardet_git::encoding::to_standard(expected_encoding_name)
+    let Some(expected_encoding) = uchardet_git::encoding::as_whatwg(expected_encoding_name)
     else {
         eprintln!(
             "警告: 编码 {} 不被 encoding_rs 支持，跳过测试",
@@ -119,7 +119,9 @@ fn test_auto_encoding_reader_for_file(
     // 使用 AutoEncodingReader 解码（将预期编码作为后备，确保即使检测失败也能解码）
     let file = fs::File::open(file_path)?;
     let fallbacks = &[expected_encoding];
-    let mut reader = AutoEncodingReader::new_with_fallbacks_default(file, fallbacks)
+    let mut reader = AutoEncodingReaderBuilder::with_reader(file)
+        .fallbacks(fallbacks)
+        .build()
         .map_err(|e| format!("创建 AutoEncodingReader 失败: {}", e))?;
 
     let mut decoded_bytes = Vec::new();

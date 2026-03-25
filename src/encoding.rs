@@ -20,7 +20,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-pub fn to_standard(encoding: &str) -> Option<&'static encoding_rs::Encoding> {
+pub fn as_whatwg(encoding: &str) -> Option<&'static encoding_rs::Encoding> {
     if encoding.eq_ignore_ascii_case("MAC-CYRILLIC") {
         return Some(encoding_rs::X_MAC_CYRILLIC);
     }
