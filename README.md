@@ -54,18 +54,21 @@ assert_eq!(encoding, "WINDOWS-1252");
 ### 自动转码 Reader（需启用 `auto_encoding_reader` 特性）
 
 ```rust
-use std::io::Read;
-use uchardet_git::auto_encoding_reader::AutoEncodingReader;
+#[cfg(feature = "auto_encoding_reader")]
+{
+    use std::io::Read;
 
-let data = b"\x93\x72\x61\x6e\xe7\x6f\x69\x73\xe9";
-let cursor = std::io::Cursor::new(data);
-let mut reader = AutoEncodingReader::new(cursor).expect("创建读取器失败");
-// assert_eq!(reader.encoding_name(), &Some("".to_owned()));
-assert_eq!(reader.decoder().encoding().name(), "gb18030");
+    use uchardet_git::auto_encoding_reader::AutoEncodingReader;
 
-let mut utf8_string = String::new();
-reader.read_to_string(&mut utf8_string).unwrap();
-println!("解码后的文本: {}", utf8_string);
+    let data = b"\x93\x72\x61\x6e\xe7\x6f\x69\x73\xe9";
+    let cursor = std::io::Cursor::new(data);
+    let mut reader = AutoEncodingReader::new(cursor).expect("创建读取器失败");
+    assert_eq!(reader.decoder().encoding().name(), "gb18030");
+
+    let mut utf8_string = String::new();
+    reader.read_to_string(&mut utf8_string).unwrap();
+    println!("解码后的文本: {}", utf8_string);
+}
 ```
 
 ### 高级用法
